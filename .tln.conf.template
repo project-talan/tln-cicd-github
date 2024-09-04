@@ -121,7 +121,7 @@ const envs = {
 const components = [
   { id: 'web/landing',                proxy: false, ecr: 'web.landing',                   image: true,    migrations: false },
 //  { id: 'backend/services/',          proxy: false, ecr: 'backend.services.core',         image: true,    migrations: true },
-]
+];
 
 const getComponents = (env, filter = (v) => !v.proxy, log = false ) => {
   const ref = env.MYPROJECT_REPO_REF;

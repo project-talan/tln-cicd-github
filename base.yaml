@@ -17,7 +17,7 @@ on:
       environment:
         type: string
         description: Environment
-        default: "ci"
+        default: ""
       tests:
         type: string
         description: Tests
@@ -63,7 +63,7 @@ jobs:
         with:
           node-version: "22.6.0"
 
-      - run: npm i -g tln-cli@1.104.0
+      - run: npm i -g tln-cli@1.104.0 tln-pm@0.2.0
 
       - uses: actions/checkout@v4
         with:
@@ -84,7 +84,7 @@ jobs:
           large-packages: true
           docker-images: false
           swap-storage: true
-        
+
       - name: Configure environment
         env:
           ENVIRONMENT_GROUP: ${{ secrets.ENVIRONMENT_GROUP }}
@@ -96,7 +96,7 @@ jobs:
 
           mkdir secrets
           echo "$ENVIRONMENT_GROUP" > secrets/.env.${{ inputs.group }}
-          tln configure-ci:prereq:get-secrets
+          tln configure-ci:get-secrets:prereq
           ls -la secrets
 
       - name: Init

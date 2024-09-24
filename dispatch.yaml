@@ -10,7 +10,7 @@ on:
       environment:
         type: string
         description: Environment
-        default: ci
+        default: dev01
       tests:
         type: string
         description: Tests unit, spec, static, blind, api, ui, load

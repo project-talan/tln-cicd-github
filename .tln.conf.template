@@ -192,6 +192,8 @@ module.exports = {
     env.TLN_UID = domains.prod.split('.').reverse().join('.');
     env.TLN_VERSION = fs.readFileSync(path.join(__dirname, 'version'), 'utf8').trim();
 
+    env.MYPROJECT_SHA1 = exec("git log -1 --format='format:%h %s'").toString().trim().substring(0, 30);
+
     env.MYPROJECT_CLOUD_PROVIDER = 'aws';
     env.MYPROJECT_CLOUD_PROVIDER_ACCOUNT = account;
     env.MYPROJECT_K8S_NAMESPACE = context.replace(':', '-');
@@ -235,17 +237,23 @@ module.exports = {
     }).filter(item => !!item).join(',');
 
     // Extract db, user, passsword from env vars and prepare input for Terraform
+    const connStrParcer = (conn) => {
+      if (conn) {
+        const dbu = conn.match(/\?user=(.*)\&/)[1];
+        const p = conn.match(/\&password=(.*)/)[1];
+        const p1 = dbu.split('-');
+        return { db: p1[0], user: p1[1], password: p };
+      }
+    }
     const databases = [
       //'MYPROJECT_PG_CONNECTION_STRING',
     ].map( v => {
       const conn = env[v];
-      const dbu = conn.match(/\?user=(.*)\&/)[1];
-      const p = conn.match(/\&password=(.*)/)[1];
-      const p1 = dbu.split('-');
-      //console.log(dbu, p, p1[0], p1[1]);
-      return `"${p1[0]}" = { owner = "${p1[1]}", password = "${p}" }`;
+      if (conn) {
+        const {db, user, password} = connStrParcer(conn);
+        return `"${db}" = { owner = "${user}", password = "${password}" }`;
+      }
     }).join(', ');
-
     env.TF_VAR_databases = `{ ${databases} }`;
     //console.log(env.TF_VAR_databases);
     //env.TF_VAR_databases = `{ "user" = { owner = "admin", password = "admin" }, "balance" = { owner = "admin", password = "admin" } }`;
@@ -266,7 +274,7 @@ module.exports = {
     ];
   },
   inherits: async (tln) => [],
-  depends: async (tln) => [],
+  depends: async (tln) => ['aws-cli-2.17.9'],
   steps: async (tln) =>
     [
       ['init',      'init:link',  '', ''],
@@ -303,6 +311,7 @@ module.exports = {
           //`tln install ${['platform', 'env', script.env.MYPROJECT_CLOUD_PROVIDER].join('/')} --depends`,
           //`tln install ${['platform', 'app'].join('/')} --depends`,
           //`tln install ${['platform', 'tenant'].join('/')} --depends`,
+          //`tln exec -c 'aws --version'`,
           //`tln exec platform/env/aws -c 'aws ecr get-login-password | docker login --username AWS --password-stdin ${script.env.TLN_DOCKER_REGISTRY}'`
         ]));
       }

@@ -1,4 +1,7 @@
-/* TPM
+project:
+  id: tln-cicd-github
+  name: Talan CI/CD skeleton for Github
+  description: Talan CI/CD skeleton for Github
 
 team:
   vlad.k:
@@ -11,8 +14,6 @@ timeline:
     date: 2024-10-xx
 
 tasks: |-
-  [-:003:v24.10.0] @vlad.k Create repository to test CI/CD skeleton
-  [>:002:v24.10.0] @vlad.k Split prereq & login command
-  [+:001:v24.9.0] @vlad.k Set default env in base.yml - '', dispatch/push - dev01
-
-*/
+  [-:003:v24.10.0] Create repository to test CI/CD skeleton @vlad.k
+  [>:002:v24.10.0] Split prereq & login command @vlad.k
+  [+:001:v24.9.0] Set default env in base.yml - '', dispatch/push - dev01 @vlad.k

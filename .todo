@@ -8,10 +8,10 @@ team:
     email: vladislav.kurmaz@gmail.com
 
 timeline:
-  v24.9.0:
-    date: 2024-09-24
-  v24.10.0:
-    date: 2024-10-xx
+  - name:  v24.10.0
+    date: 2024-10-31 17:30:00 GMT+0200
+  - name:  v24.9.0
+    date: 2024-09-24 17:30:00 GMT+0200
 
 tasks: |-
   [-:003:v24.10.0] Create repository to test CI/CD skeleton @vlad.k

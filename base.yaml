@@ -16,31 +16,31 @@ on:
         default: "dev"
       environment:
         type: string
-        description: Environment
+        description: "Environment"
         default: ""
       tenants:
         type: string
-        description: Tenants
+        description: "Tenants"
         default: ""
       tests:
         type: string
-        description: Tests: unit, spec, static, compose, api, blind, ui, load
+        description: "Tests: unit, spec, static, compose, api, blind, ui, load"
         default: ""
       build:
         type: boolean
-        description: build
+        description: "Build"
         default: false
       package-n-upload:
         type: boolean
-        description: Package & Upload
+        description: "Package & Upload"
         default: false
       construct-n-deploy:
         type: boolean
-        description: Construct Infrastructure & Deploy App
+        description: "Construct Infrastructure & Deploy App"
         default: false
       undeploy-n-deconstruct:
         type: boolean
-        description: Undeploy App & Deconstruct Infrastruture
+        description: "Undeploy App & Deconstruct Infrastruture"
         default: false
     secrets:
       ENVIRONMENT_GROUP:

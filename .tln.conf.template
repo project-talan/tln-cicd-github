@@ -3,19 +3,25 @@ const fs = require('fs');
 const exec = require('child_process').execSync;
 const yaml = require('js-yaml');
 const assign = require('assign-deep');
+const puppeteer = require('puppeteer');
 
 const domains = {
-  docker: 'myproject.docker',
+  local: 'myproject.local',
   dev: 'myproject.xyz',
-  prod: 'myproject.io'
+  prod: 'myproject.com'
 };
 
 const config = {
   params: (groupId, envId, params = {}) => ({
     domain: '',
+    catalog: '',
+    host: '',
     account: '',
     registry: '',
     records: [],
+    emailTemplatePrefix: '',
+    emailFrom: '',
+    emailDefault: '',
     vars: {
       //TF_VAR_aws_region: '',
       //TF_VAR_image_tag_mutability: '',
@@ -28,16 +34,23 @@ const config = {
       //TF_VAR_use_primary_domain: '',
       //TF_VAR_rds_pg_db_size: '',
       //TF_VAR_rds_pg_db_allocated_storage: '',
-      //TF_VAR_rds_pg_max_allocated_storage: ''
+      //TF_VAR_rds_pg_max_allocated_storage: '',
+      MYPROJECT_SERVICES_IAM_HOST: 'services-iam',
+      MYPROJECT_SERVICES_IAM_PORT: '8877',
     },
   }),
   next: {
     dev: {
       params: (groupId, envId, params) => ({
         domain: domains.dev,
-        account: '<account-id>',
-        registry: '<account-id>.dkr.ecr.eu-central-1.amazonaws.com',
-        records: [`${envId}.${domains.dev}`, 'api'],
+        catalog: domains.dev,
+        host: `${envId}.${domains.dev}`,
+        account: '',
+        registry: '',
+        records: [`${envId}.${domains.dev}`, 'api', 'idp'],
+        emailTemplatePrefix: 'myproject-saas-dev',
+        emailFrom: `support@no-reply.${domains.dev}`,
+        emailDefault: `myproject@gmail.com`,
         vars: {
           TF_VAR_aws_region: 'eu-central-1',
           TF_VAR_image_tag_mutability: 'MUTABLE',
@@ -56,19 +69,26 @@ const config = {
       next: {
         ci: {
           params: (group, env, params) => ({
-            records: [domains.docker, `api.${domains.docker}`],
+            domain: domains.local,
+            host: domains.local,
+            records: [domains.local, `api.${domains.local}`, `idp.${domains.local}`],
             vars: {
             }
           })
         },
         uat01: {
           params: (group, env, params) => ({
-            records: [params.domain, 'api'],
+            host: params.domain,
+            records: [params.domain, 'api', 'idp'],
             vars: {
+              TF_VAR_aws_k8s_nodes_desired: '2',
+              TF_VAR_aws_k8s_nodes_max: '2',
+              TF_VAR_aws_k8s_nodes_size: 't3.small',
+              TF_VAR_aws_k8s_nodes_disk: '20',
               TF_VAR_use_primary_domain: 'true',
               TF_VAR_rds_pg_db_size: 'db.t3.small',
-              TF_VAR_rds_pg_db_allocated_storage: '20',
-              TF_VAR_rds_pg_max_allocated_storage: '40'
+              TF_VAR_rds_pg_db_allocated_storage: '10',
+              TF_VAR_rds_pg_max_allocated_storage: '20'
             }
           })
         }
@@ -77,9 +97,14 @@ const config = {
     prod: {
       params: (groupId, envId, params) => ({
         domain: domains.prod,
-        account: '<account-id>',
-        registry: '<account-id>.dkr.ecr.eu-central-1.amazonaws.com',
-        records: [domains.prod, 'api'],
+        catalog: domains.prod,
+        host: domains.prod,
+        account: '',
+        registry: '',
+        records: [domains.prod, 'api', 'idp'],
+        emailTemplatePrefix: 'tw-saas-prod',
+        emailFrom: `support@no-reply.${domains.prod}`,
+        emailDefault: `info@myproject.com`,
         vars: {
           TF_VAR_aws_region: 'eu-central-1',
           TF_VAR_image_tag_mutability: 'IMMUTABLE', 
@@ -119,8 +144,11 @@ const envs = {
 };
 
 const components = [
-  { id: 'web/landing',                proxy: false, ecr: 'web.landing',                   image: true,    migrations: false },
-//  { id: 'backend/services/',          proxy: false, ecr: 'backend.services.core',         image: true,    migrations: true },
+  { id: 'web/landing',                proxy: false, ecr: 'web.landing',             image: true },
+  { id: 'web/app',                    proxy: false, ecr: 'web.app',                 image: true },
+  { id: 'backend/services/core',      proxy: false, ecr: 'backend.services.core',   image: true },
+  { id: 'backend/services/iam',       proxy: false, ecr: 'backend.services.iam',    image: true },
+  { id: 'backend/services/idp',       proxy: false, ecr: 'backend.services.idp',    image: true },
 ];
 
 const getComponents = (env, filter = (v) => !v.proxy, log = false ) => {
@@ -160,6 +188,8 @@ const getContext = () => {
   return { context, groupId: cp[0], envId: cp[1]};
 }
 
+const getDomainReverse = (domain) => domain.split('.').reverse().join('.');
+
 const getTerraformOpts = (env) => {
   return `${env.MYPROJECT_INIT?'--init ':''} ${env.MYPROJECT_PLAN?'--plan ':''}${env.MYPROJECT_APPLY?'--apply ':''}${env.MYPROJECT_AUTO_APPROVE?'--auto-approve ':''}`;
 }
@@ -179,6 +209,9 @@ module.exports = {
       .option('apply',          { describe: 'Run Terraform apply', default: false, type: 'boolean' })
       .option('auto-approve',   { describe: 'Tun on auto approve for apply & destroy', default: false, type: 'boolean' })
       .option('ci',             { describe: 'Add CI specfic commands, like sshuttle', default: false, type: 'boolean' })
+      .option('user',           { describe: 'User name', default: null, type: 'string' })
+      .option('password',       { describe: 'User password', default: null, type: 'string' })
+      .option('show-browser',   { describe: 'Headless mode', default: false, type: 'boolean' })
     ;
   },
   env: async (tln, env) => {
@@ -187,16 +220,28 @@ module.exports = {
     env.MYPROJECT_CONTEXT_GROUP_ID = groupId;
     env.MYPROJECT_CONTEXT_ENV_ID = envId;
 
-    const {domain, account, registry, records, vars} = getEnvParams(groupId, envId);
+    const {domain, catalog, host, account, registry, records, emailTemplatePrefix, emailFrom, emailDefault, vars} = getEnvParams(groupId, envId);
 
-    env.TLN_UID = domains.prod.split('.').reverse().join('.');
+    env.MYPROJECT_BASE_URL = `https://${host}`;
+    env.MYPROJECT_API_BASE_URL = `https://api.${host}`;
+
+    env.TLN_UID = getDomainReverse(domains.prod);
     env.TLN_VERSION = fs.readFileSync(path.join(__dirname, 'version'), 'utf8').trim();
 
-    env.MYPROJECT_SHA1 = exec("git log -1 --format='format:%h %s'").toString().trim().substring(0, 30);
+    env.MYPROJECT_SHA1 = '';
+    try {
+      env.MYPROJECT_SHA1 = exec("git log -1 --format='format:%h %s'").toString().trim().substring(0, 15);
+    } catch (e) {
+      console.error('Failed to get SHA1', e);
+    }
 
+    env.MYPROJECT_CATALOG = catalog;
     env.MYPROJECT_CLOUD_PROVIDER = 'aws';
     env.MYPROJECT_CLOUD_PROVIDER_ACCOUNT = account;
     env.MYPROJECT_K8S_NAMESPACE = context.replace(':', '-');
+    env.MYPROJECT_EMAIL_TEMPLATE_PREFIX = emailTemplatePrefix;
+    env.MYPROJECT_EMAIL_FROM = emailFrom;
+    env.MYPROJECT_DEFAULT_EMAIL = emailDefault;
 
     env.MYPROJECT_TOKEN = '';
     const tf = path.join(__dirname, 'token');
@@ -211,8 +256,8 @@ module.exports = {
     env.TF_VAR_access_key = env.AWS_ACCESS_KEY_ID;
     env.TF_VAR_secret_key = env.AWS_SECRET_ACCESS_KEY;
 
-    env.TF_VAR_org_id = 'myorg';
-    env.TF_VAR_project_id = 'myproject';
+    env.TF_VAR_org_id = 'myproject';
+    env.TF_VAR_project_id = 'tw-saas';
     env.TF_VAR_group_id = groupId;
     env.TF_VAR_env_id = envId;
     env.TF_VAR_product_version = env.TLN_VERSION;
@@ -221,21 +266,45 @@ module.exports = {
     env.TF_VAR_region = vars.TF_VAR_aws_region;
 
     env.TF_VAR_domain_name = domain;
+    env.TF_VAR_host = host;
     env.TF_VAR_dns_records = records;
     env.TF_VAR_api_base_url =  env.MYPROJECT_API_BASE_URL;
     env.TF_VAR_repositories = components.map(item => {
       if (item.ecr) {
         const r = [];
-        const prefix = domains.prod.split('.').reverse().join('.');
-        // let id = item.id.replace(/\//g, '.');
+        const prefix = env.TLN_DOCKER_REGISTRY_PREFIX;
         r.push([prefix, item.ecr].join('.'));
-        if (item.migrations) {
-          r.push([prefix, `${id}-migrations`].join('.'));
-        }
         return r;
       }
     }).filter(item => !!item).join(',');
+    // ------------------------------------------------------------------------
+    let connectionStrings = [
+      'MYPROJECT_BACKEND_SERVICES_IDP_CONNECTION_STRING',
+      'MYPROJECT_BACKEND_SERVICES_CORE_CONNECTION_STRING',
+      'MYPROJECT_BACKEND_SERVICES_IAM_CONNECTION_STRING',
+    ].map( v => env[v] );
+    // ------------------------------------------------------------------------
+    const envsCatalog = path.join(__dirname, 'secrets', `${getDomainReverse(env.MYPROJECT_CATALOG)}.yml`);
+    if (fs.existsSync(envsCatalog)) {
+      const envsConfig = yaml.load(fs.readFileSync(envsCatalog), 'utf8');
+      if (envsConfig.env[envId]) {
+        env.MYPROJECT_COGNITO_DOMAIN_URL = envsConfig.env[envId].cognito.domain_url;
+        env.MYPROJECT_USER_POOL_NAME = envsConfig.env[envId].cognito.user_pool_name;
+        env.MYPROJECT_USER_POOL_ID = envsConfig.env[envId].cognito.user_pool_id;
+        // Identity providers for tenant
+        const tenantId = env.MYPROJECT_TENANT;
+        if (tenantId) {
+          env.TF_VAR_user_pool_id = envsConfig.env[envId].cognito.user_pool_id;
+          env.TF_VAR_identity_providers = JSON.stringify(envsConfig.env[envId].tenants[tenantId].identity_providers || {});
+          env.TF_VAR_use_cognito_provider = envsConfig.env[envId].tenants[tenantId].cognito.use_provider;
 
+          env.TF_VAR_db_instance_identifier = envsConfig.env[envId].tenants[tenantId].db.instance_identifier
+          connectionStrings = [envsConfig.env[envId].tenants[tenantId].db.connection_string];
+          env.MYPROJECT_BACKEND_TENANT_CONNECTION_STRING = connectionStrings[0];
+        }
+      }
+    }
+    // ------------------------------------------------------------------------
     // Extract db, user, passsword from env vars and prepare input for Terraform
     const connStrParcer = (conn) => {
       if (conn) {
@@ -245,10 +314,9 @@ module.exports = {
         return { db: p1[0], user: p1[1], password: p };
       }
     }
-    const databases = [
-      //'MYPROJECT_PG_CONNECTION_STRING',
-    ].map( v => {
-      const conn = env[v];
+    // Prepare databases for Terraform
+    const databases = connectionStrings.map( v => {
+      const conn = v;
       if (conn) {
         const {db, user, password} = connStrParcer(conn);
         return `"${db}" = { owner = "${user}", password = "${password}" }`;
@@ -257,7 +325,8 @@ module.exports = {
     env.TF_VAR_databases = `{ ${databases} }`;
     //console.log(env.TF_VAR_databases);
     //env.TF_VAR_databases = `{ "user" = { owner = "admin", password = "admin" }, "balance" = { owner = "admin", password = "admin" } }`;
-
+    //
+    // Assign environment specific variables
     Object.keys(vars).forEach( v => {
       if (typeof vars[v] === "function" ) {
         env[v] = vars[v](envId);
@@ -270,20 +339,24 @@ module.exports = {
     const { context, groupId, envId } = getContext();
     return [
       path.join('secrets', `.env.${groupId}`),
-//      path.join('secrets', `.env.${groupId}.${envId}`)
+      path.join('secrets', `.env.${groupId}.${envId}`)
     ];
   },
   inherits: async (tln) => [],
   depends: async (tln) => ['aws-cli-2.17.9'],
   steps: async (tln) =>
     [
-      ['init',      'init:link',  '', ''],
-      ['format',    'format',     '', ''],
-      ['unit-test', 'unit-test',  '', ''],
-      ['spec-test', 'spec-test',  '', ''],
-      ['build',     'build',      '', ''],
-      ['package',   'package',    '', '&& docker builder prune -f', (v) => !v.proxy && v.image],
-      //['publish',   'publish',    '', '', (v) => !v.proxy && v.image],
+      ['init',        'init:link',    '', ''],
+      ['format',      'format',       '', ''],
+      ['unit-test',   'unit-test',    '', ''],
+      ['spec-test',   'spec-test',    '', ''],
+      ['api-test',    'api-test',     '', ''],
+      ['blind-test',  'blind-test',   '', ''],
+      ['ui-test',     'ui-test',      '', ''],
+      ['load-test',   'load-test',    '', ''],
+      ['build',       'build',        '', ''],
+      ['package',     'package',      '', '&& docker builder prune -f', (v) => !v.proxy && v.image],
+      ['publish',     'publish',      '', '', (v) => !v.proxy && v.image],
     ].map( v => 
       ({
         id: `${v[0]}-all`,
@@ -307,28 +380,77 @@ module.exports = {
     },
     { id: 'prereq', builder: async (tln, script) => {
         script.set(
-          components.map(c => `tln install ${c.id} --depends`).concat([
-          //`tln install ${['platform', 'env', script.env.MYPROJECT_CLOUD_PROVIDER].join('/')} --depends`,
-          //`tln install ${['platform', 'app'].join('/')} --depends`,
-          //`tln install ${['platform', 'tenant'].join('/')} --depends`,
-          //`tln exec -c 'aws --version'`,
-          //`tln exec platform/env/aws -c 'aws ecr get-login-password | docker login --username AWS --password-stdin ${script.env.TLN_DOCKER_REGISTRY}'`
+          getComponents(script.env, undefined, true).map(c => `tln install ${c.id} --depends`).concat([
+          `tln install ${['platform', 'env', script.env.MYPROJECT_CLOUD_PROVIDER].join('/')} --depends`,
+          `tln install ${['platform', 'app'].join('/')} --depends`,
+          `tln install ${['platform', 'tenant'].join('/')} --depends`,
+          `tln exec -c 'aws --version'`,
+          `tln exec platform/env/aws -c 'aws ecr get-login-password | docker login --username AWS --password-stdin ${script.env.TLN_DOCKER_REGISTRY}'`
         ]));
       }
     },
     { id: 'get-secrets', builder: async (tln, script) => {
-      const domainReverse = script.env.TF_VAR_domain_name.split('.').reverse().join('.');
+      const domainReverse = getDomainReverse(script.env.MYPROJECT_CATALOG);
       script.set(
         [
-          //[`${domainReverse}.env.${script.env.TF_VAR_group_id}.${script.env.TF_VAR_env_id}`, `.env.${script.env.TF_VAR_group_id}.${script.env.TF_VAR_env_id}`],
+          [`${domainReverse}.env.${script.env.TF_VAR_group_id}.${script.env.TF_VAR_env_id}`, `.env.${script.env.TF_VAR_group_id}.${script.env.TF_VAR_env_id}`],
+          [`${domainReverse}.yml`],
         ].map(s => {
             const src = s[0];
             const dst = s[1] || src;
-            return `aws secretsmanager get-secret-value --secret-id ${src} | jq -r '.SecretString' > secrets.aws/${dst}`
+            return `aws secretsmanager get-secret-value --secret-id ${src} | jq -r '.SecretString' > secrets/${dst}`
           })
         );
       }
     },
+    { id: 'login', builder: async (tln, script) => {
+      const tenant = script.env.MYPROJECT_TENANT;
+      const user = script.env.MYPROJECT_USER;
+      const pass = script.env.MYPROJECT_PASSWORD;
+      const headless = !script.env.MYPROJECT_SHOW_BROWSER;
+
+      const url = `https://${domain}.auth.eu-central-1.amazoncognito.com/oauth2/authorize?client_id=${client_id}&response_type=code&scope=email+openid&redirect_uri=https://${redirect_uri}`;
+      const userAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36';
+
+      const browser = await puppeteer.launch({headless});
+      const page = await browser.newPage();
+      await page.setUserAgent(userAgent);
+
+      await page.setViewport({width: 1200, height: 720});
+      await page.goto(url, { waitUntil: 'networkidle0' }); // wait until page load
+
+      await page.waitForSelector('#signInFormUsername');
+      const un = await page.$$('#signInFormUsername');
+      await un[1].type(user, { delay: 100 });
+
+      await page.waitForSelector('#signInFormPassword');
+      const up = await page.$$('#signInFormPassword');
+      await up[1].type(pass, { delay: 100 });
+
+      // click and wait for navigation
+      await page.waitForSelector('input[name="signInSubmitButton"]');
+      const sb = await page.$$('input[name="signInSubmitButton"]');
+      await Promise.all([
+        sb[1].click(),
+        page.waitForNavigation({ waitUntil: 'networkidle0' }),
+      ]);
+
+      // get accessToken
+      const cookies = await page.cookies();
+      const accessToken = cookies.find(c => c.name === 'accessToken');
+      if (accessToken) {
+        console.log(accessToken.value);
+        fs.writeFileSync(path.join(__dirname, 'token'), accessToken.value);
+      } else {
+        console.log('Failed to get accessToken, other cookies:');
+        console.log(cookies);
+      }
+      await page.close();
+      await browser.close();
+    }},
+
     { id: 'configure-provider', builder: async (tln, script) => {
       const provider = ['platform', 'env', script.env.MYPROJECT_CLOUD_PROVIDER].join('/');
       script.set([

@@ -5,7 +5,7 @@ on:
     inputs:
       ref:
         type: string
-        description: Ref to compare changes
+        description: Ref to compare changes for selective builds
       cleanup:
         type: boolean
         description: Cleanup disk space
@@ -18,10 +18,14 @@ on:
         type: string
         description: Environment
         default: ""
+      tenants:
+        type: string
+        description: Tenants
+        default: ""
       tests:
         type: string
-        description: Tests
-        default: "unit, spec, static"
+        description: Tests: unit, spec, static, compose, api, blind, ui, load
+        default: ""
       build:
         type: boolean
         description: build
@@ -43,12 +47,12 @@ on:
         required: true
       SONAR_GITHUB_TOKEN:
         required: true
-#      SONAR_TOKEN:
-#        required: true
+      SONAR_TOKEN:
+        required: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Install sshuttle
         run: |
@@ -63,7 +67,7 @@ jobs:
         with:
           node-version: "22.6.0"
 
-      - run: npm i -g tln-cli@1.104.0 tln-pm@0.2.0
+      - run: npm i -g tln-cli@1.109.0 tln-pm@0.18.0
 
       - uses: actions/checkout@v4
         with:
@@ -111,21 +115,30 @@ jobs:
       - name: Spec test
         if: ${{ contains(inputs.tests, 'spec') }}
         run: |
-          #tln up platform
-          #docker ps -a
-          #tln spec-test-all -- --repo-ref ${{ inputs.ref }}
+          # tln up platform
+          # docker ps -a
+          # tln spec-test-all -- --repo-ref ${{ inputs.ref }}
 
-    #  - name: SonarCloud Scan
-    #    uses: SonarSource/sonarcloud-github-action@master
-    #    if: ${{ contains(inputs.tests, 'static') }}
-    #    env:
-    #      GITHUB_TOKEN: ${{ secrets.SONAR_GITHUB_TOKEN }}
-    #      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: SonarQube Scan
+        if: ${{ contains(inputs.tests, 'static') }}
+        uses: SonarSource/sonarqube-scan-action@v4.2.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.SONAR_GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: "https://sonarcloud.io"
 
       - name: Build
         if: ${{ inputs.build }}
         run: |
           tln build-all -- --repo-ref ${{ inputs.ref }}
+
+      - name: Test using docker compose
+        if: ${{ contains(inputs.tests, 'compose') }}
+        run: |
+          tln up platform -- --dbs --detach
+          tln up platform -- --web --services --detach
+          sleep 30
+          docker container ls -a
 
       - name: Package and Upload
         if: ${{ inputs.package-n-upload }}
@@ -135,49 +148,52 @@ jobs:
       - name: Construct & Deploy
         if: ${{ inputs.construct-n-deploy }}
         run: |
-          #tln configure-provider:configure-group:construct-env:construct-app -- --init
+          # tln configure-provider:configure-group:construct-env:construct-app -- --init
 
-          #tln configure-provider:configure-group:construct-env -- --apply --auto-approve
+          # tln configure-provider:configure-group:construct-env -- --apply --auto-approve
 
-          #tln sshuttle platform/env/aws -- --bastion $(tln get-bastion platform/env/aws) --deamon --ci
-          #tln construct-app -- --apply --auto-approve
-          #tln deploy-app
-          ## Configure tenant(s) is needed
-          ## ...
-          #sudo pkill -f sshuttle
+          # tln sshuttle platform/env/aws -- --bastion $(tln get-bastion platform/env/aws) --deamon --ci
+          # tln construct-app -- --apply --auto-approve
+          # tln deploy-app
+          # # Configure tenants
+          # IFS=':' read -ra tenant <<< "${{ inputs.tenants }}"
+          # for t in "${tenant[@]}"; do
+          #   tln onboard-tenant -- --tenant ${t} --init --apply --auto-approve
+          # done          
+          # sudo pkill -f sshuttle
 
-          #echo "Waiting for platform to come up for 1 minutes ..."
-          #sleep 60
+          # echo "Waiting for platform to come up for 1 minutes ..."
+          # sleep 60
 
       - name: Run API tests
         if: ${{ contains(inputs.tests, 'api') }}
         run: |
-          #tln run-api tests -- --prune --quiet
+          # tln run-api tests -- --prune --quiet
 
       - name: Run Blind tests
         if: ${{ contains(inputs.tests, 'blind') }}
         run: |
-          #tln run-blind tests -- --prune --quiet
+          # tln run-blind tests -- --prune --quiet
 
       - name: Run UI tests
         if: ${{ contains(inputs.tests, 'ui') }}
         run: |
-          #tln run-ui tests -- --prune --quiet
+          # tln run-ui tests -- --prune --quiet
 
       - name: Run Load tests
         if: ${{ contains(inputs.tests, 'load') }}
         run: |
-          #tln run-load tests -- --prune --quiet
+          # tln run-load tests -- --prune --quiet
 
       - name: Undeploy & Deconstruct
         if: ${{ inputs.undeploy-n-deconstruct }}
         run: |
-          #tln configure-provider:configure-group:construct-env:construct-app -- --init
+          # tln configure-provider:configure-group:construct-env:construct-app -- --init
 
-          #tln sshuttle platform/env/aws -- --bastion $(tln get-bastion platform/env/aws) --deamon --ci
-          #tln undeploy-app
-          #tln deconstruct-app -- --apply --auto-approve
-          #sudo pkill -f sshuttle
+          # tln sshuttle platform/env/aws -- --bastion $(tln get-bastion platform/env/aws) --deamon --ci
+          # tln undeploy-app
+          # tln deconstruct-app -- --apply --auto-approve
+          # sudo pkill -f sshuttle
 
-          #tln deconstruct-env:configure-group:configure-provider -- --init --apply --auto-approve
+          # tln deconstruct-env:configure-group:configure-provider -- --init --apply --auto-approve
 

@@ -15,10 +15,11 @@ jobs:
       cleanup: false
       group: dev
       environment: dev01
-      tests: static, api, ui, load
+      tenants: demo:app
+      tests: static, api, blind, ui, load
       package-n-upload: true
       construct-n-deploy: true
     secrets:
       ENVIRONMENT_GROUP: ${{ secrets.ENVIRONMENT_GROUP_DEV }}
       SONAR_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -1,10 +1,9 @@
-# tln-cicd-github
-CI/CD skeleton
+# Talan CI/CD Github skeleton
 
 ## Integration
-* Add this repository using git subtree (execute from the root of the repository and add into main branch using merge commit)
+* Add this repository using git subtree (execute from the root of the repository and add into main branch using merge commit (**without rebase with or without squash**)
   ```
-  tln subtree-add -- --prefix .github/workflows --subtree https://github.com/project-talan/tln-cicd-github.git --ref v24.9.0 --squash
+  tln subtree-add -- --prefix .github/workflows --subtree https://github.com/project-talan/tln-cicd-github.git --ref v25.4.0 --squash
   ```
 * Install Nodejs libraries (execute next command from the root of the repository)
   ```

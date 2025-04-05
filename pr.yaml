@@ -15,6 +15,7 @@ jobs:
       cleanup: false
       group: dev
       environment: ci
+      tenants: demo:app
       tests: unit, spec, static, compose
       build: true
     secrets:

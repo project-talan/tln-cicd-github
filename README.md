@@ -7,7 +7,7 @@
   ```
 * Install Nodejs libraries (execute next command from the root of the repository)
   ```
-  npm i js-yaml assign-deep fast-glob --save
+  npm i js-yaml assign-deep fast-glob puppeteer --save
   ```
 * Copy .github/workflows/.tln.conf.template to the repository root and update it with actuail values: project name, terraform cloud parameters, AWS account etc.
   ```

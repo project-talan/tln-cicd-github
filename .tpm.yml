@@ -11,10 +11,10 @@ timeline:
   25.6.0:
     deadline: 2025-06-30T18:00:00.000Z
   25.4.0:
-    deadline: 2025-04-05T18:00:00.000Z
+    deadline: 2025-04-06T22:00:00.000Z
   24.9.0:
     deadline: 2024-09-24 17:30:00 GMT+0200
 tasks: |-
-  [-:003:25.4.0] Create repository to test CI/CD skeleton #2h @vlad.k
+  [+:003:25.4.0] Create repository to test CI/CD skeleton #2h @vlad.k
   [+:002:25.4.0] Split prereq & login command #2h @vlad.k
   [+:001:24.9.0] Set default env in base.yml - '', dispatch/push - dev01 @vlad.k

@@ -13,3 +13,16 @@
   ```
   cp .github/workflows/.tln.conf.template .tln.conf
   ```
+* Create version file 
+  ```
+  echo "25.6.0" > version
+  ```
+* Create context file 
+  ```
+  echo "dev:dev01" > .context
+  ```
+* Create .gitignore file with next content
+  ```
+  **/node_modules
+  .context
+  ```

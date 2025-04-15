@@ -17,6 +17,10 @@ timeline:
   24.9.0:
     deadline: 2024-09-24 17:30:00 GMT+0200
 tasks: |-
+  [-:005:25.6.0] Update skeletons #2h @vlad.k
+    [-] detached flag inside base.yaml
+    [-] .env.* templates
+    [-] rename .tpm.yml to .tpm.conf
   [+:004:25.4.1] Apply fixes after integration #2h @vlad.k
   [+:003:25.4.0] Create repository to test CI/CD skeleton #2h @vlad.k
   [+:002:25.4.0] Split prereq & login command #2h @vlad.k
